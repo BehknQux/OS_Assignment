@@ -5,7 +5,6 @@
 
 #include "common/utils.h"
 
-// #4 Deadlock senaryosunu gozlemlemek icin producer tarafinda yardimci resource kilitleri aliniyor.
 static int acquire_aux_locks_producer(thread_context_t *context) {
     simulation_t *simulation = context->simulation;
     struct timespec wait_start;
@@ -21,6 +20,7 @@ static int acquire_aux_locks_producer(thread_context_t *context) {
         return 0;
     }
 
+    // Producer takes R1 then probes R2; this ordering is paired with consumer's reverse order.
     context->aux_locked_a = 0;
     context->aux_locked_b = 0;
     logger_log(&simulation->logger, "INFO", "PRODUCER", "%s acquiring resource_a", context->thread_name);
@@ -36,6 +36,7 @@ static int acquire_aux_locks_producer(thread_context_t *context) {
     while (!simulation_should_stop(simulation)) {
         int result;
 
+        // trylock keeps the thread observable for deadlock analysis without hard blocking here.
         simulation_set_waiting_resource(simulation, context->thread_index, THREAD_WAITING_AUX_LOCK, RESOURCE_B);
         timespec_get(&wait_start, TIME_UTC);
         result = pthread_mutex_trylock(&simulation->resource_b);
@@ -82,6 +83,7 @@ static void release_aux_locks_producer(thread_context_t *context) {
         return;
     }
 
+    // Release order is deterministic to keep held-resource bookkeeping consistent.
     if (context->aux_locked_b) {
         simulation_remove_held_resource(simulation, context->thread_index, RESOURCE_B);
         logger_log(&simulation->logger, "INFO", "SYNC", "Thread %s released Lock R2", context->thread_name);
@@ -103,8 +105,6 @@ static int make_produced_value(thread_context_t *context) {
     return context->logical_id * 100000 + (int) context->produced_count;
 }
 
-// #5 Producer dongusu:
-// bekle -> uret -> buffer doluysa bekle -> buffer'a yaz -> consumer'lari uyandir
 void *producer_thread(void *arg) {
     thread_context_t *context = (thread_context_t *) arg;
     simulation_t *simulation = context->simulation;
@@ -127,6 +127,7 @@ void *producer_thread(void *arg) {
             break;
         }
 
+        // Production event is timestamped through state updates and metric counters.
         value = make_produced_value(context);
         if (pthread_mutex_lock(&buffer->mutex) != 0) {
             release_aux_locks_producer(context);
@@ -134,7 +135,7 @@ void *producer_thread(void *arg) {
         }
         logger_log(&simulation->logger, "INFO", "SYNC", "Thread %s has Lock buffer-%c", context->thread_name, buffer->name);
 
-        // #7 Buffer doluysa producer aktif donmez; condition variable uzerinde bekler.
+        // Blocking on not_full models bounded-buffer backpressure.
         while (buffer_is_full(buffer) && !simulation_should_stop(simulation)) {
             simulation_set_waiting_buffer(simulation, context->thread_index, THREAD_WAITING_BUFFER_FULL, context->output_buffer_index);
             timespec_get(&wait_start, TIME_UTC);

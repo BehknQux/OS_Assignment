@@ -27,7 +27,7 @@ $(TARGET): $(OBJ)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 run: $(TARGET)
-	./$(TARGET) docs/configs/low_load.conf
+	./$(TARGET) src/configs/low_load.conf
 
 ifeq ($(OS),Windows_NT)
 clean:

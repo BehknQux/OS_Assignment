@@ -36,6 +36,7 @@ buffer_t *simulation_get_buffer(simulation_t *simulation, int buffer_index) {
 }
 
 void simulation_update_state(simulation_t *simulation, int thread_index, thread_state_t state) {
+    // Every state transition is centralized so the monitor observes a consistent timeline.
     pthread_mutex_lock(&simulation->state_mutex);
     simulation->monitors[thread_index].state = state;
     if (state == THREAD_RUNNING || state == THREAD_FINISHED) {
@@ -128,6 +129,7 @@ int simulation_should_stop(simulation_t *simulation) {
 static void simulation_request_stop(simulation_t *simulation) {
     int i;
 
+    // Global stop flag is followed by condition broadcasts to wake blocked workers.
     pthread_mutex_lock(&simulation->state_mutex);
     simulation->stop_requested = 1;
     pthread_mutex_unlock(&simulation->state_mutex);
@@ -140,11 +142,10 @@ static void simulation_request_stop(simulation_t *simulation) {
     }
 }
 
-// #2 Simulasyonun ortak parcalarini burada kuruyoruz:
-// buffer'lar, logger, metrics ve thread durumlarini izleyen yapilar.
 static int simulation_init(simulation_t *simulation, const config_t *config) {
     int i;
 
+    // Initialization allocates shared structures and prepares synchronization primitives.
     memset(simulation, 0, sizeof(*simulation));
     simulation->config = *config;
     simulation->buffer_count = config->buffer_count;
@@ -218,6 +219,7 @@ static void simulation_destroy(simulation_t *simulation) {
 static void initialize_monitor_entries(simulation_t *simulation, thread_context_t *producer_contexts, thread_context_t *consumer_contexts) {
     int i;
 
+    // Monitor records are pre-populated to avoid race-prone lazy initialization.
     for (i = 0; i < simulation->config.producer_count; i++) {
         thread_monitor_t *monitor = &simulation->monitors[i];
         snprintf(monitor->label, sizeof(monitor->label), "P%d", producer_contexts[i].logical_id);
@@ -247,11 +249,10 @@ static void initialize_monitor_entries(simulation_t *simulation, thread_context_
     }
 }
 
-// #3 Config'ten gelen tanimlari thread context'lerine ceviriyoruz.
-// Boylece her thread hangi buffer ile calisacagini bilir.
 static int setup_contexts(simulation_t *simulation, thread_context_t *producer_contexts, thread_context_t *consumer_contexts) {
     int i;
 
+    // Context mapping resolves symbolic config names into direct buffer indexes.
     for (i = 0; i < simulation->config.producer_count; i++) {
         producer_contexts[i].simulation = simulation;
         producer_contexts[i].thread_index = i;
@@ -298,7 +299,7 @@ static int setup_contexts(simulation_t *simulation, thread_context_t *producer_c
 }
 
 int main(int argc, char **argv) {
-    const char *config_path = "docs/configs/low_load.conf";
+    const char *config_path = "src/configs/low_load.conf";
     config_t config;
     simulation_t simulation;
     pthread_t *producer_threads = NULL;
@@ -315,7 +316,7 @@ int main(int argc, char **argv) {
         config_path = argv[1];
     }
 
-    // #1 Programin giris noktasi: once config okunur ve dogrulanir.
+    // Configuration is loaded first to keep all runtime behavior data-driven.
     if (config_load(config_path, &config) != 0) {
         fprintf(stderr, "Failed to load config: %s\n", config_path);
         return EXIT_FAILURE;
@@ -355,7 +356,7 @@ int main(int argc, char **argv) {
     initialize_monitor_entries(&simulation, producer_contexts, consumer_contexts);
     metrics_mark_start(&simulation.metrics);
 
-    // #4 Deadlock monitor ayri bir thread olarak baslatilir.
+    // The monitor runs independently so cycle detection does not block workers.
     if (pthread_create(&monitor_thread, NULL, deadlock_monitor_thread, &simulation) != 0) {
         fprintf(stderr, "Failed to create monitor thread\n");
         free(producer_threads);
@@ -367,7 +368,7 @@ int main(int argc, char **argv) {
     }
     monitor_started = 1;
 
-    // #5 Producer thread'leri baslatilir.
+    // Worker pools are created in two phases to preserve producer/consumer indexing.
     for (i = 0; i < config.producer_count; i++) {
         if (pthread_create(&producer_threads[i], NULL, producer_thread, &producer_contexts[i]) != 0) {
             fprintf(stderr, "Failed to create producer thread P%d\n", producer_contexts[i].logical_id);
@@ -377,7 +378,6 @@ int main(int argc, char **argv) {
         created_producers++;
     }
 
-    // #6 Consumer thread'leri baslatilir.
     for (i = 0; i < config.consumer_count && !simulation_should_stop(&simulation); i++) {
         if (pthread_create(&consumer_threads[i], NULL, consumer_thread, &consumer_contexts[i]) != 0) {
             fprintf(stderr, "Failed to create consumer thread C%d\n", consumer_contexts[i].logical_id);
@@ -387,7 +387,7 @@ int main(int argc, char **argv) {
         created_consumers++;
     }
 
-    // #9 Ana thread yalnizca sureyi bekler; sure bitince tum sistemi durdurur.
+    // Main thread acts as experiment controller and terminates all workers at timeout.
     sleep_ms(config.run_duration_sec * 1000);
     simulation_request_stop(&simulation);
 
@@ -403,7 +403,6 @@ int main(int argc, char **argv) {
         pthread_join(monitor_thread, NULL);
     }
 
-    // #10 Kapanista metrikler toplanip ekrana yazdirilir.
     metrics_mark_end(&simulation.metrics);
     metrics_print(&simulation.metrics);
 

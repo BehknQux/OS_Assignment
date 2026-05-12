@@ -96,8 +96,7 @@ int config_find_buffer_index(const config_t *config, char buffer_name) {
     return -1;
 }
 
-// #1 Hocanin bekledigi config formati burada satir satir parse edilir.
-// Ornekler: A[5], P1>A, A>C1>B, P1:10
+// Parses assignment-style lines such as A[5], P1>A, A>C1>B, and P1:10.
 static int parse_new_format_line(config_t *config, const char *line) {
     char buffer_name;
     int id;
@@ -170,6 +169,7 @@ static int parse_new_format_line(config_t *config, const char *line) {
 }
 
 static int assign_legacy_value(legacy_config_t *legacy, config_t *config, const char *key, const char *value) {
+    // Legacy keys are still accepted to support earlier experiment files.
     if (strcmp(key, "buffer_size") == 0) {
         legacy->buffer_size = atoi(value);
     } else if (strcmp(key, "producer_count") == 0) {
@@ -208,6 +208,7 @@ static int assign_legacy_value(legacy_config_t *legacy, config_t *config, const 
 static int materialize_legacy_config(config_t *config, const legacy_config_t *legacy) {
     int i;
 
+    // Legacy mode materializes a single-buffer topology with generated thread mappings.
     config->buffer_count = 0;
     config->producer_count = 0;
     config->consumer_count = 0;
@@ -240,10 +241,10 @@ static int materialize_legacy_config(config_t *config, const legacy_config_t *le
     return 0;
 }
 
-// #1 Parse sonrasi baglantilarin gercekten var olan buffer'lara gittigi kontrol edilir.
 static int validate_config(config_t *config) {
     int i;
 
+    // Validation enforces that every declared thread endpoint references an existing buffer.
     if (config->buffer_count <= 0 || config->producer_count <= 0 || config->consumer_count <= 0) {
         return -1;
     }
@@ -282,8 +283,7 @@ void config_set_defaults(config_t *config) {
     strcpy(config->log_file, "system.log");
 }
 
-// #1 Config yukleme akisinin merkezi burasi.
-// Dosya okunur, satirlar parse edilir, en sonda config dogrulanir.
+// Supports both named format and legacy key=value format for compatibility.
 int config_load(const char *path, config_t *config) {
     FILE *file;
     char line[512];
@@ -303,6 +303,7 @@ int config_load(const char *path, config_t *config) {
         return -1;
     }
 
+    // Parsing pass detects format and accumulates definitions before structural validation.
     while (fgets(line, sizeof(line), file) != NULL) {
         char *trimmed;
         char *separator;
@@ -337,6 +338,7 @@ int config_load(const char *path, config_t *config) {
 
     fclose(file);
 
+    // Exactly one format path is materialized to keep semantics deterministic.
     if (saw_named_format) {
         int i;
         for (i = 0; i < config->producer_count; i++) {

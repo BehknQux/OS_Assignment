@@ -22,6 +22,7 @@ static int is_thread_eligible(const simulation_t *simulation, int thread_index, 
         return 0;
     }
 
+    // Timeout gating filters transient contention and focuses on persistent waits.
     return current_ms - monitor->wait_started_ms >= simulation->config.deadlock_timeout_ms;
 }
 
@@ -75,8 +76,7 @@ static void add_buffer_edges(
     }
 }
 
-// #4 Monitor thread, bekleyen thread'lerden wait-for graph kurar.
-// Kenarlar ya resource beklemesinden ya da pipeline buffer bagimliligindan gelir.
+// The wait-for graph merges resource-lock waits and pipeline dependencies.
 static void build_wait_for_graph(
     const simulation_t *simulation,
     const int eligible[],
@@ -145,6 +145,7 @@ static int detect_cycle_dfs(
 ) {
     int neighbor;
 
+    // DFS recursion stack encodes the active dependency chain.
     visited[node] = 1;
     rec_stack[node] = 1;
 
@@ -201,6 +202,7 @@ static void log_cycle(simulation_t *simulation, const int cycle_nodes[], int cyc
     size_t used = 0;
     int i;
 
+    // Human-readable cycle traces simplify report validation and debugging.
     used += (size_t) snprintf(message + used, sizeof(message) - used, "Deadlock detected: ");
     for (i = 0; i < cycle_length; i++) {
         const char *label = simulation->monitors[cycle_nodes[i]].label;
@@ -230,7 +232,7 @@ static void mark_cycle_reported(simulation_t *simulation, const int cycle_nodes[
     }
 }
 
-// #4 Ayrica calisan monitor thread burada belli araliklarla cycle arar.
+// Periodic monitoring limits false positives by applying timeout-based eligibility.
 void *deadlock_monitor_thread(void *arg) {
     simulation_t *simulation = (simulation_t *) arg;
 
@@ -255,6 +257,7 @@ void *deadlock_monitor_thread(void *arg) {
             eligible[i] = is_thread_eligible(simulation, i, current_ms);
         }
 
+        // Graph reconstruction is done on each period from the latest monitor snapshot.
         build_wait_for_graph(simulation, eligible, graph);
 
         while (detect_cycle_in_graph(simulation->monitor_count, graph, disabled, cycle_nodes, &cycle_length)) {

@@ -4,7 +4,7 @@
 
 #include "common/utils.h"
 
-// #4 Deadlock senaryosunu gozlemlemek icin consumer tarafinda ters sirada auxiliary lock deneniyor.
+// Opposite auxiliary lock ordering is intentional for circular-wait experiments.
 static int acquire_aux_locks_consumer(thread_context_t *context) {
     simulation_t *simulation = context->simulation;
     struct timespec wait_start;
@@ -20,6 +20,7 @@ static int acquire_aux_locks_consumer(thread_context_t *context) {
         return 0;
     }
 
+    // Consumer intentionally starts with R2 to create circular-wait potential with producers.
     context->aux_locked_a = 0;
     context->aux_locked_b = 0;
     logger_log(&simulation->logger, "INFO", "CONSUMER", "%s acquiring resource_b", context->thread_name);
@@ -35,6 +36,7 @@ static int acquire_aux_locks_consumer(thread_context_t *context) {
     while (!simulation_should_stop(simulation)) {
         int result;
 
+        // Waiting metadata is published before each probe to feed the monitor graph.
         simulation_set_waiting_resource(simulation, context->thread_index, THREAD_WAITING_AUX_LOCK, RESOURCE_A);
         timespec_get(&wait_start, TIME_UTC);
         result = pthread_mutex_trylock(&simulation->resource_a);
@@ -102,8 +104,6 @@ static int make_forwarded_value(thread_context_t *context) {
     return context->logical_id * 100000 + (int) context->produced_count;
 }
 
-// #6 Consumer dongusu:
-// bekle -> input buffer'dan al -> gerekiyorsa output buffer'a yaz -> logla
 void *consumer_thread(void *arg) {
     thread_context_t *context = (thread_context_t *) arg;
     simulation_t *simulation = context->simulation;
@@ -129,13 +129,14 @@ void *consumer_thread(void *arg) {
             break;
         }
 
+        // Stage 1: consume from input buffer under bounded-buffer synchronization.
         if (pthread_mutex_lock(&input_buffer->mutex) != 0) {
             release_aux_locks_consumer(context);
             break;
         }
         logger_log(&simulation->logger, "INFO", "SYNC", "Thread %s has Lock buffer-%c", context->thread_name, input_buffer->name);
 
-        // #8 Buffer bossa consumer condition variable uzerinde bekler.
+        // A consumer waits on not_empty until data becomes available.
         while (buffer_is_empty(input_buffer) && !simulation_should_stop(simulation)) {
             simulation_set_waiting_buffer(simulation, context->thread_index, THREAD_WAITING_BUFFER_EMPTY, context->input_buffer_index);
             timespec_get(&wait_start, TIME_UTC);
@@ -175,6 +176,7 @@ void *consumer_thread(void *arg) {
         }
 
         output_value = make_forwarded_value(context);
+        // Stage 2 (pipeline mode): forward transformed item to output buffer.
         simulation_set_in_flight_item(simulation, context->thread_index, context->input_buffer_index);
 
         if (pthread_mutex_lock(&output_buffer->mutex) != 0) {
@@ -184,7 +186,6 @@ void *consumer_thread(void *arg) {
         }
         logger_log(&simulation->logger, "INFO", "SYNC", "Thread %s has Lock buffer-%c", context->thread_name, output_buffer->name);
 
-        // #8 Pipeline consumer bir buffer'dan alip digerine yazarken output doluysa bekler.
         while (buffer_is_full(output_buffer) && !simulation_should_stop(simulation)) {
             simulation_set_waiting_buffer(simulation, context->thread_index, THREAD_WAITING_BUFFER_FULL, context->output_buffer_index);
             timespec_get(&wait_start, TIME_UTC);

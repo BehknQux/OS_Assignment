@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 
-// #2 Her buffer ayri queue + mutex + condition variable ciftleriyle kurulur.
 int buffer_init(buffer_t *buffer, char name, int capacity) {
     if (buffer == NULL || capacity <= 0) {
         return -1;
@@ -45,8 +44,7 @@ void buffer_destroy(buffer_t *buffer) {
     buffer->tail = 0;
 }
 
-// #7 Buffer'a veri ekleme islemi.
-// Gercek senkronizasyon disarida mutex kilidi alinmisken yapilir.
+// Queue operations assume the caller already holds buffer->mutex.
 int buffer_insert(buffer_t *buffer, int value) {
     if (buffer == NULL || buffer->data == NULL || buffer->count >= buffer->capacity) {
         return -1;
@@ -58,8 +56,6 @@ int buffer_insert(buffer_t *buffer, int value) {
     return 0;
 }
 
-// #8 Buffer'dan veri cikarma islemi.
-// Bu da disarida mutex kilidi alinmisken cagrilir.
 int buffer_remove(buffer_t *buffer, int *value) {
     if (buffer == NULL || buffer->data == NULL || value == NULL || buffer->count <= 0) {
         return -1;

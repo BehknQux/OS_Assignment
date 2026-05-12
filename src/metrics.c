@@ -51,7 +51,6 @@ static unsigned int read_logical_processor_count(void) {
 }
 #endif
 
-// #2 ve #10 Performans sayaclari simulasyon basinda burada hazirlanir.
 int metrics_init(metrics_t *metrics, const config_t *config) {
     if (metrics == NULL || config == NULL) {
         return -1;
@@ -119,6 +118,7 @@ void metrics_record_consumed(metrics_t *metrics) {
 }
 
 void metrics_record_producer_wait(metrics_t *metrics, long long wait_ms) {
+    // Blocking events are counted separately for producer-side congestion analysis.
     pthread_mutex_lock(&metrics->mutex);
     metrics->producer_wait_ms += wait_ms;
     metrics->producer_block_events++;
@@ -126,6 +126,7 @@ void metrics_record_producer_wait(metrics_t *metrics, long long wait_ms) {
 }
 
 void metrics_record_consumer_wait(metrics_t *metrics, long long wait_ms) {
+    // Consumer-side blocking captures empty-input and full-output waiting intervals.
     pthread_mutex_lock(&metrics->mutex);
     metrics->consumer_wait_ms += wait_ms;
     metrics->consumer_block_events++;
@@ -139,12 +140,13 @@ void metrics_record_aux_wait(metrics_t *metrics, long long wait_ms) {
 }
 
 void metrics_record_deadlock(metrics_t *metrics) {
+    // Deadlock counter is updated by the monitor when a new cycle is confirmed.
     pthread_mutex_lock(&metrics->mutex);
     metrics->deadlock_count++;
     pthread_mutex_unlock(&metrics->mutex);
 }
 
-// #10 Program sonunda uretilen/tuketilen miktar ve bekleme sureleri burada raporlanir.
+// Reported averages use only buffer-blocking events for comparability across runs.
 void metrics_print(const metrics_t *metrics) {
     double runtime_sec;
     double throughput;
@@ -164,8 +166,8 @@ void metrics_print(const metrics_t *metrics) {
 
     total_block_events = metrics->producer_block_events + metrics->consumer_block_events;
     if (total_block_events > 0) {
-        average_wait_ms = (double) (metrics->producer_wait_ms + metrics->consumer_wait_ms + metrics->aux_wait_ms)
-            / (double) total_block_events;
+        average_wait_ms = (double) (metrics->producer_wait_ms + metrics->consumer_wait_ms)
+                          / (double) total_block_events;
     }
 
     throughput = (double) metrics->total_consumed / runtime_sec;
@@ -187,7 +189,6 @@ void metrics_print(const metrics_t *metrics) {
     printf("Producer blocking time : %lld ms\n", metrics->producer_wait_ms);
     printf("Consumer blocking time : %lld ms\n", metrics->consumer_wait_ms);
     printf("CPU utilization        : %.2f %%\n", cpu_utilization);
-    printf("Aux lock waiting time  : %lld ms\n", metrics->aux_wait_ms);
     printf("Deadlock detections    : %ld\n", metrics->deadlock_count);
     printf("Deadlock frequency     : %.4f /sec\n", deadlock_frequency);
 }
