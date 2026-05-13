@@ -17,6 +17,31 @@ typedef struct {
     int run_duration_sec;
 } legacy_config_t;
 
+static int clamp_int(int value, int min_value, int max_value) {
+    if (value < min_value) {
+        return min_value;
+    }
+
+    if (value > max_value) {
+        return max_value;
+    }
+
+    return value;
+}
+
+static int derive_monitor_interval_ms(const config_t *config) {
+    int derived;
+
+    if (config == NULL) {
+        return 500;
+    }
+
+    // The monitor should poll often enough to observe persistent waits
+    // without forcing every config file to carry a tuning parameter.
+    derived = config->deadlock_timeout_ms / 4;
+    return clamp_int(derived, 100, 1000);
+}
+
 static int add_buffer(config_t *config, char name, int capacity) {
     int i;
 
@@ -276,7 +301,7 @@ void config_set_defaults(config_t *config) {
     memset(config, 0, sizeof(*config));
     config->run_duration_sec = 8;
     config->deadlock_timeout_ms = 2000;
-    config->monitor_interval_ms = 500;
+    config->monitor_interval_ms = 0;
     config->log_to_file = 0;
     config->simulate_circular_wait = 0;
     config->aux_lock_hold_ms = 50;
@@ -352,6 +377,10 @@ int config_load(const char *path, config_t *config) {
         }
     } else {
         return -1;
+    }
+
+    if (config->monitor_interval_ms <= 0) {
+        config->monitor_interval_ms = derive_monitor_interval_ms(config);
     }
 
     return validate_config(config);
