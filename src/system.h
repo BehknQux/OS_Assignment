@@ -8,10 +8,6 @@
 #include "config.h"
 #include "metrics.h"
 
-enum {
-    DEADLOCK_START_DELAY_MS = 3000
-};
-
 typedef enum {
     THREAD_RUNNING = 0,
     THREAD_WAITING_BUFFER_FULL,
@@ -88,5 +84,6 @@ void simulation_set_pipeline_info(simulation_t *simulation, int thread_index, in
 void simulation_set_in_flight_item(simulation_t *simulation, int thread_index, int source_buffer_index);
 void simulation_clear_in_flight_item(simulation_t *simulation, int thread_index);
 int simulation_should_stop(simulation_t *simulation);
+void simulation_request_stop(simulation_t *simulation);
 
 #endif

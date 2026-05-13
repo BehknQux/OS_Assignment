@@ -12,11 +12,7 @@ static int acquire_aux_locks_consumer(thread_context_t *context) {
     int locked_a = 0;
     int locked_b = 0;
 
-    if (!simulation->config.simulate_circular_wait) {
-        return 0;
-    }
-
-    if (now_ms() - simulation->started_ms < DEADLOCK_START_DELAY_MS) {
+    if (now_ms() - simulation->started_ms < simulation->config.deadlock_start_delay_ms) {
         return 0;
     }
 
@@ -78,10 +74,6 @@ static int acquire_aux_locks_consumer(thread_context_t *context) {
 
 static void release_aux_locks_consumer(thread_context_t *context) {
     simulation_t *simulation = context->simulation;
-
-    if (!simulation->config.simulate_circular_wait) {
-        return;
-    }
 
     if (context->aux_locked_a) {
         simulation_remove_held_resource(simulation, context->thread_index, RESOURCE_A);

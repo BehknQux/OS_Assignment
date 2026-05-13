@@ -33,10 +33,10 @@ typedef struct {
     int producer_count;
     int consumer_count;
     int run_duration_sec;
-    int deadlock_timeout_ms;
+    int deadlock_start_delay_ms;
     int monitor_interval_ms;
     int log_to_file;
-    int simulate_circular_wait;
+    int stop_on_deadlock;
     int aux_lock_hold_ms;
     char log_file[256];
 } config_t;

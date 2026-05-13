@@ -11,19 +11,16 @@ static int monitor_holds_resource(const thread_monitor_t *monitor, resource_t re
     return (monitor->held_resources & resource) != 0;
 }
 
-static int is_thread_eligible(const simulation_t *simulation, int thread_index, long long current_ms) {
+static int is_thread_eligible(const simulation_t *simulation, int thread_index) {
     const thread_monitor_t *monitor = &simulation->monitors[thread_index];
+
+    (void) simulation;
 
     if (monitor->state == THREAD_RUNNING || monitor->state == THREAD_FINISHED) {
         return 0;
     }
 
-    if (monitor->wait_started_ms == 0) {
-        return 0;
-    }
-
-    // Timeout gating filters transient contention and focuses on persistent waits.
-    return current_ms - monitor->wait_started_ms >= simulation->config.deadlock_timeout_ms;
+    return monitor->wait_started_ms != 0;
 }
 
 static void add_aux_edges(
@@ -242,11 +239,10 @@ void *deadlock_monitor_thread(void *arg) {
         int graph[MAX_GRAPH_THREADS][MAX_GRAPH_THREADS];
         int cycle_nodes[MAX_GRAPH_THREADS + 1];
         int cycle_length = 0;
-        long long current_ms;
+        int stop_after_deadlock = 0;
         int i;
 
         sleep_ms(simulation->config.monitor_interval_ms);
-        current_ms = now_ms();
         pthread_mutex_lock(&simulation->state_mutex);
 
         for (i = 0; i < simulation->monitor_count; i++) {
@@ -254,7 +250,7 @@ void *deadlock_monitor_thread(void *arg) {
                 simulation->monitors[i].reported_deadlock = 0;
             }
 
-            eligible[i] = is_thread_eligible(simulation, i, current_ms);
+            eligible[i] = is_thread_eligible(simulation, i);
         }
 
         // Graph reconstruction is done on each period from the latest monitor snapshot.
@@ -273,6 +269,9 @@ void *deadlock_monitor_thread(void *arg) {
             if (should_log) {
                 log_cycle(simulation, cycle_nodes, cycle_length);
                 metrics_record_deadlock(&simulation->metrics);
+                if (simulation->config.stop_on_deadlock) {
+                    stop_after_deadlock = 1;
+                }
             }
 
             mark_cycle_reported(simulation, cycle_nodes, cycle_length, disabled);
@@ -280,6 +279,11 @@ void *deadlock_monitor_thread(void *arg) {
         }
 
         pthread_mutex_unlock(&simulation->state_mutex);
+
+        if (stop_after_deadlock) {
+            logger_log(&simulation->logger, "WARN", "DEADLOCK", "Stopping simulation because stop_on_deadlock is enabled");
+            simulation_request_stop(simulation);
+        }
     }
 
     logger_log(&simulation->logger, "INFO", "DEADLOCK", "Deadlock monitor finished");

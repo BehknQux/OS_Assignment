@@ -17,31 +17,6 @@ typedef struct {
     int run_duration_sec;
 } legacy_config_t;
 
-static int clamp_int(int value, int min_value, int max_value) {
-    if (value < min_value) {
-        return min_value;
-    }
-
-    if (value > max_value) {
-        return max_value;
-    }
-
-    return value;
-}
-
-static int derive_monitor_interval_ms(const config_t *config) {
-    int derived;
-
-    if (config == NULL) {
-        return 500;
-    }
-
-    // The monitor should poll often enough to observe persistent waits
-    // without forcing every config file to carry a tuning parameter.
-    derived = config->deadlock_timeout_ms / 4;
-    return clamp_int(derived, 100, 1000);
-}
-
 static int add_buffer(config_t *config, char name, int capacity) {
     int i;
 
@@ -210,14 +185,14 @@ static int assign_legacy_value(legacy_config_t *legacy, config_t *config, const 
     } else if (strcmp(key, "run_duration_sec") == 0) {
         legacy->run_duration_sec = atoi(value);
         config->run_duration_sec = legacy->run_duration_sec;
-    } else if (strcmp(key, "deadlock_timeout_ms") == 0) {
-        config->deadlock_timeout_ms = atoi(value);
+    } else if (strcmp(key, "deadlock_start_delay_ms") == 0) {
+        config->deadlock_start_delay_ms = atoi(value);
     } else if (strcmp(key, "monitor_interval_ms") == 0) {
         config->monitor_interval_ms = atoi(value);
     } else if (strcmp(key, "log_to_file") == 0) {
         config->log_to_file = parse_bool(value) ? 1 : 0;
-    } else if (strcmp(key, "simulate_circular_wait") == 0) {
-        config->simulate_circular_wait = parse_bool(value) ? 1 : 0;
+    } else if (strcmp(key, "stop_on_deadlock") == 0) {
+        config->stop_on_deadlock = parse_bool(value) ? 1 : 0;
     } else if (strcmp(key, "aux_lock_hold_ms") == 0) {
         config->aux_lock_hold_ms = atoi(value);
     } else if (strcmp(key, "log_file") == 0) {
@@ -300,10 +275,10 @@ void config_set_defaults(config_t *config) {
 
     memset(config, 0, sizeof(*config));
     config->run_duration_sec = 8;
-    config->deadlock_timeout_ms = 2000;
-    config->monitor_interval_ms = 0;
+    config->deadlock_start_delay_ms = 3000;
+    config->monitor_interval_ms = 500;
     config->log_to_file = 0;
-    config->simulate_circular_wait = 0;
+    config->stop_on_deadlock = 0;
     config->aux_lock_hold_ms = 50;
     strcpy(config->log_file, "system.log");
 }
@@ -379,10 +354,6 @@ int config_load(const char *path, config_t *config) {
         return -1;
     }
 
-    if (config->monitor_interval_ms <= 0) {
-        config->monitor_interval_ms = derive_monitor_interval_ms(config);
-    }
-
     return validate_config(config);
 }
 
@@ -395,9 +366,9 @@ void config_print(const config_t *config) {
 
     printf("Configuration:\n");
     printf("  runtime=%d sec\n", config->run_duration_sec);
-    printf("  deadlock_timeout_ms=%d\n", config->deadlock_timeout_ms);
+    printf("  deadlock_start_delay_ms=%d\n", config->deadlock_start_delay_ms);
     printf("  monitor_interval_ms=%d\n", config->monitor_interval_ms);
-    printf("  simulate_circular_wait=%d\n", config->simulate_circular_wait);
+    printf("  stop_on_deadlock=%d\n", config->stop_on_deadlock);
     printf("  aux_lock_hold_ms=%d\n", config->aux_lock_hold_ms);
 
     for (i = 0; i < config->buffer_count; i++) {

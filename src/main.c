@@ -126,7 +126,7 @@ int simulation_should_stop(simulation_t *simulation) {
     return should_stop;
 }
 
-static void simulation_request_stop(simulation_t *simulation) {
+void simulation_request_stop(simulation_t *simulation) {
     int i;
 
     // Global stop flag is followed by condition broadcasts to wake blocked workers.
@@ -311,6 +311,7 @@ int main(int argc, char **argv) {
     int created_producers = 0;
     int created_consumers = 0;
     int monitor_started = 0;
+    int remaining_ms;
 
     if (argc > 1) {
         config_path = argv[1];
@@ -321,8 +322,6 @@ int main(int argc, char **argv) {
         fprintf(stderr, "Failed to load config: %s\n", config_path);
         return EXIT_FAILURE;
     }
-
-    config_print(&config);
 
     if (simulation_init(&simulation, &config) != 0) {
         fprintf(stderr, "Simulation init failed\n");
@@ -387,8 +386,13 @@ int main(int argc, char **argv) {
         created_consumers++;
     }
 
-    // Main thread acts as experiment controller and terminates all workers at timeout.
-    sleep_ms(config.run_duration_sec * 1000);
+    // Main thread waits for timeout, but also exits early if the monitor asks for stop.
+    remaining_ms = config.run_duration_sec * 1000;
+    while (remaining_ms > 0 && !simulation_should_stop(&simulation)) {
+        int sleep_chunk_ms = remaining_ms < 100 ? remaining_ms : 100;
+        sleep_ms(sleep_chunk_ms);
+        remaining_ms -= sleep_chunk_ms;
+    }
     simulation_request_stop(&simulation);
 
     for (i = 0; i < created_producers; i++) {
