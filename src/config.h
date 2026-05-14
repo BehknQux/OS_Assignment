@@ -43,7 +43,6 @@ typedef struct {
 
 int config_load(const char *path, config_t *config);
 void config_set_defaults(config_t *config);
-void config_print(const config_t *config);
 int config_find_buffer_index(const config_t *config, char buffer_name);
 
 #endif
