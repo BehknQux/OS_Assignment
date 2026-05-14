@@ -1,5 +1,7 @@
 # Producer-Consumer Synchronization and Deadlock Simulation
 
+GitHub Repository: https://github.com/BehknQux/OS_Assignment
+
 This project is a C implementation of a producer-consumer system using POSIX threads, mutexes, condition variables, bounded buffers, runtime configuration files, performance metrics, and deadlock detection.
 
 The program simulates multiple producer and consumer threads working on one or more shared buffers. Different configuration files are used to test low load, high load, bottleneck, circular dependency, and deadlock-focused scenarios.
@@ -656,4 +658,3 @@ mingw32-make clean
 - The deadlock timeout used by the monitor is internal to the code, not a config-file parameter.
 - High-load runs can produce many log lines, especially when terminal logging is enabled.
 - For video demonstration, shorter runtimes can be used by changing `t:60` to a smaller value such as `t:20` or `t:30`.
-
