@@ -311,7 +311,7 @@ int main(int argc, char **argv) {
     int created_producers = 0;
     int created_consumers = 0;
     int monitor_started = 0;
-    int remaining_ms;
+    long long end_ms;
 
     if (argc > 1) {
         config_path = argv[1];
@@ -387,11 +387,11 @@ int main(int argc, char **argv) {
     }
 
     // Main thread waits for timeout, but also exits early if the monitor asks for stop.
-    remaining_ms = config.run_duration_sec * 1000;
-    while (remaining_ms > 0 && !simulation_should_stop(&simulation)) {
-        int sleep_chunk_ms = remaining_ms < 100 ? remaining_ms : 100;
+    end_ms = now_ms() + (long long) config.run_duration_sec * 1000;
+    while (now_ms() < end_ms && !simulation_should_stop(&simulation)) {
+        long long remaining_ms = end_ms - now_ms();
+        int sleep_chunk_ms = remaining_ms < 100 ? (int) remaining_ms : 100;
         sleep_ms(sleep_chunk_ms);
-        remaining_ms -= sleep_chunk_ms;
     }
     simulation_request_stop(&simulation);
 

@@ -6,6 +6,7 @@
 #include "common/utils.h"
 
 #define MAX_GRAPH_THREADS (MAX_PRODUCERS + MAX_CONSUMERS)
+#define DEADLOCK_TIMEOUT_MS 900
 
 static int monitor_holds_resource(const thread_monitor_t *monitor, resource_t resource) {
     return (monitor->held_resources & resource) != 0;
@@ -13,6 +14,7 @@ static int monitor_holds_resource(const thread_monitor_t *monitor, resource_t re
 
 static int is_thread_eligible(const simulation_t *simulation, int thread_index) {
     const thread_monitor_t *monitor = &simulation->monitors[thread_index];
+    long long current_ms = now_ms();
 
     (void) simulation;
 
@@ -20,7 +22,8 @@ static int is_thread_eligible(const simulation_t *simulation, int thread_index) 
         return 0;
     }
 
-    return monitor->wait_started_ms != 0;
+    return monitor->wait_started_ms != 0
+        && current_ms - monitor->wait_started_ms >= DEADLOCK_TIMEOUT_MS;
 }
 
 static void add_aux_edges(

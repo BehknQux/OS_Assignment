@@ -12,7 +12,8 @@ static int acquire_aux_locks_consumer(thread_context_t *context) {
     int locked_a = 0;
     int locked_b = 0;
 
-    if (now_ms() - simulation->started_ms < simulation->config.deadlock_start_delay_ms) {
+    if (simulation->config.deadlock_start_delay_ms < 0
+        || now_ms() - simulation->started_ms < simulation->config.deadlock_start_delay_ms) {
         return 0;
     }
 

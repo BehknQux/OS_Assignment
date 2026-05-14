@@ -275,7 +275,7 @@ void config_set_defaults(config_t *config) {
 
     memset(config, 0, sizeof(*config));
     config->run_duration_sec = 8;
-    config->deadlock_start_delay_ms = 3000;
+    config->deadlock_start_delay_ms = -1;
     config->monitor_interval_ms = 500;
     config->log_to_file = 0;
     config->stop_on_deadlock = 0;
